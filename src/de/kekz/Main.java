@@ -1,8 +1,11 @@
 package de.kekz;
 
+import java.io.File;
+import java.io.FileWriter;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.Base64;
+import java.util.Scanner;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -15,21 +18,21 @@ public class Main {
 	/**
 	 * Utils
 	 */
-	public static SecretKey generateAESSecretKey(int keysize) throws NoSuchAlgorithmException {
+	public static SecretKey generateSecretKey(int keysize) throws NoSuchAlgorithmException {
 		KeyGenerator keyGen = KeyGenerator.getInstance("AES");
 		keyGen.init(keysize, SecureRandom.getInstanceStrong());
 
 		return keyGen.generateKey();
 	}
 
-	public static byte[] getRandomNonce(int numBytes) {
-		byte[] nonce = new byte[numBytes];
+	public static byte[] generateRandomBytes(int size) {
+		byte[] nonce = new byte[size];
 		new SecureRandom().nextBytes(nonce);
 
 		return nonce;
 	}
 
-	public static String getBytesToHex(byte[] bytes) {
+	public static String convertBytesToHex(byte[] bytes) {
 		StringBuilder result = new StringBuilder();
 		for (byte b : bytes) {
 			result.append(String.format("%02x", b));
@@ -38,11 +41,11 @@ public class Main {
 		return result.toString();
 	}
 
-	public static byte[] getHexToBytes(String s) {
-		int len = s.length();
+	public static byte[] convertHexToBytes(String hex) {
+		int len = hex.length();
 		byte[] data = new byte[len / 2];
 		for (int i = 0; i < len; i += 2) {
-			data[i / 2] = (byte) ((Character.digit(s.charAt(i), 16) << 4) + Character.digit(s.charAt(i + 1), 16));
+			data[i / 2] = (byte) ((Character.digit(hex.charAt(i), 16) << 4) + Character.digit(hex.charAt(i + 1), 16));
 		}
 		return data;
 	}
@@ -68,21 +71,78 @@ public class Main {
 
 		byte[] plainText = cipher.doFinal(Base64.getDecoder().decode(data.getBytes()));
 		return new String(plainText);
+	}
 
+	public static File encrypt(File input, SecretKey secret, byte[] vector) {
+		File output = new File(input.getParent() + "\\encrypted-" + input.getName() + "");
+
+		try {
+			output.createNewFile();
+
+			FileWriter writer = new FileWriter(output);
+			Scanner scanner = new Scanner(input);
+
+			while (scanner.hasNext()) {
+				String line = scanner.nextLine();
+				String lineEncrypted = encrypt(line, secret, vector) + "\n";
+
+				writer.write(lineEncrypted);
+			}
+
+			writer.close();
+			scanner.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return output;
+	}
+
+	public static File decrypt(File input, SecretKey secret, byte[] vector) {
+		if (!input.getName().startsWith("encrypted-")) {
+			return null;
+		}
+
+		String filename = "decrypted-" + input.getName().split("encrypted-")[1];
+		File output = new File(input.getParent() + "\\" + filename);
+
+		try {
+			output.createNewFile();
+
+			FileWriter writer = new FileWriter(output);
+			Scanner scanner = new Scanner(input);
+
+			while (scanner.hasNext()) {
+				String line = scanner.nextLine();
+				String lineEncrypted = decrypt(line, secret, vector) + "\n";
+
+				writer.write(lineEncrypted);
+			}
+
+			writer.close();
+			scanner.close();
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return output;
 	}
 
 	public static void main(String[] args) throws Exception {
+		File file = new File("");
+		File encryptedFile = new File("");
+
 		String text = "https://paradoxanticheat.de/en/maintenance/";
 
-		String keyBase64 = "ZDYzZjIzMjdhOTdlNTQwNTg1OTM3ZDFjYmU0NjFlY2JjY2FiZWJkYzBhMTE1YTk1NTkyODhkNjliMzJkZDI1Nw==";
+		String keyBase64 = "MTQ1MDM4ZDc5MDIwMWNhMjJhMzE2ZjcwNTIwYzAyYzE4NTQyZmEzODQxYWI0MWVkMTZkM2Q4OTFhNzhjZjk3NA==";
 		String keyHex = new String(Base64.getDecoder().decode(keyBase64.getBytes()));
-		byte[] keyBytes = getHexToBytes(keyHex);
+		byte[] keyBytes = convertHexToBytes(keyHex);
 
 		SecretKey secretKey = new SecretKeySpec(keyBytes, 0, 32, "AES");
 
-		String vectorBase64 = "Yzc2NmZiZjY1ODdiZDRjMWY0NWFkNjI0OGEzZDIxMGQ=";
+		String vectorBase64 = "ODFmZGRlZDVlYTM0ZDU1ZGM1NTQ1MzMyYzFhZmQ4YmM=";
 		String vectorHex = new String(Base64.getDecoder().decode(vectorBase64.getBytes()));
-		byte[] vectorBytes = getHexToBytes(vectorHex);
+		byte[] vectorBytes = convertHexToBytes(vectorHex);
 
 		String encryptedText = encrypt(text, secretKey, vectorBytes);
 		String decryptedText = decrypt(encryptedText, secretKey, vectorBytes);
@@ -107,18 +167,21 @@ public class Main {
 			System.out.println("\nERROR: The decrypted data doesn't equal the input data.");
 		}
 
-		byte[] randomKeyBytes = generateAESSecretKey(key_length).getEncoded();
-		byte[] randomVectorBytes = getRandomNonce(vector_length);
+		byte[] randomKeyBytes = generateSecretKey(key_length).getEncoded();
+		byte[] randomVectorBytes = generateRandomBytes(vector_length);
 
-		String randomKeyHex = getBytesToHex(randomKeyBytes);
-		String randomVectorHex = getBytesToHex(randomVectorBytes);
+		String randomKeyHex = convertBytesToHex(randomKeyBytes);
+		String randomVectorHex = convertBytesToHex(randomVectorBytes);
 
 		String randomKeyBase64 = Base64.getEncoder().encodeToString(randomKeyHex.getBytes());
 		String randomVectorBase64 = Base64.getEncoder().encodeToString(randomVectorHex.getBytes());
 
 		System.out.println("\n\nRandom Secret Key (Hex): " + randomKeyHex);
 		System.out.println("Random Secret Key (Base64 Encoding): " + randomKeyBase64);
-		System.out.println("\nRandom Vector Key (Hex): " + randomVectorHex);
-		System.out.println("Random Vector Key (Base64 Encoding): " + randomVectorBase64);
+		System.out.println("\nRandom Vector (Hex): " + randomVectorHex);
+		System.out.println("Random Vector (Base64 Encoding): " + randomVectorBase64);
+
+		encrypt(file, secretKey, vectorBytes);
+		decrypt(encryptedFile, secretKey, vectorBytes);
 	}
 }
